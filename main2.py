@@ -247,3 +247,45 @@ def offscreen():
                         else: continue
                     else: continue
     return offscreen_list
+
+# 7. Movie ID
+@app.get("/movieid/{movie_code}")
+async def movieid(movie_code):
+    # 1) movie_code를 통해 kobis Open API로부터 영화 정보 얻기
+    # 영화 상세정보 요청 url
+    url: str = "http://www.kobis.or.kr/kobisopenapi/webservice/rest/movie/searchMovieInfo.json"
+    kobis_key = "8616582b33a50c5fa6b24e2155b5c1e3"
+
+    # query parameter
+    params: dict = {"key": kobis_key,
+                    "movieCd": movie_code}
+
+    # HTTP response
+    response = requests.get(url, params=params)
+
+    # JSON deserialize
+    response_json = json.loads(response.text)
+    result = response_json["movieInfoResult"]['movieInfo']
+
+    # get running time and a movie name
+    runtime_kobis = result["showTm"]
+    moviename_kobis = result["movieNm"]
+
+    # 2) Open API로부터 얻은 영화명 정보를 Movies Dataverse에 검색
+    # search the movie name in dataverse
+    API_KEY = "9ab68902-3f25-4848-8384-3a217a763e5a"
+    url = f"https://snu.dataverse.ac.kr/api/search?q={moviename_kobis}&subtree=movies&"
+    headers = {
+        "X-Dataverse-key": API_KEY
+    }
+    response = requests.get(url, headers = headers, timeout=5)
+
+    # if there is no error, retrive search results
+    if response.status_code == 200:
+        result = response.json()["data"]["items"]
+        if not result:  # 검색 결과가 없는 경우
+            print(f"[Warning] {moviename_kobis}에 대한 검색 결과가 없습니다.")
+        else:  # 데이터셋명이 영화명과 동일한 경우 해당 영화의 description을 출력
+            for item in result:
+                if item['description']["runningTimeMinute"] == runtime_kobis: # 러닝타임이 kobis Open API로부터 얻은 정보와 동일할 경우 영화 메타데이터 리턴
+                    return item['description']
